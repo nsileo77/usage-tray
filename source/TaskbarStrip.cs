@@ -109,7 +109,7 @@ public sealed class TaskbarStrip : Form {
   if(changed){InvalidateFrame();SetTip();if(WantsVisible)Present();}
  }
  void MiniGauge(Graphics g,float x,float y,float zoom,WindowView v){var saved=g.Save();g.TranslateTransform(x,y);g.ScaleTransform(zoom,zoom);DrawGauge(g,new PointF(0,0),v.Remaining.HasValue?(double?)(v.Remaining.Value/100):null,dashboard.Options.ShowPace&&v.Pace.HasValue?(double?)(v.Pace.Value/100):null);g.Restore(saved);}
- string ValueLabel(WindowView v){return (dashboard.Options.ShowLabels?v.Label+"  ":"")+(dashboard.Options.ShowAmounts||!v.Remaining.HasValue?v.Amount:"");}
+ string ValueLabel(WindowView v){return (dashboard.Options.ShowLabels&&dashboard.Visible.Count>1?v.Label+"  ":"")+(dashboard.Options.ShowAmounts||!v.Remaining.HasValue?v.Amount:"");}
  string TimeLabel(WindowView v){return dashboard.Options.ShowReset?v.ResetText:dashboard.Options.ShowCountdown?v.Countdown:"";}
  void DrawDashboard(Graphics g){
   var options=dashboard.Options;float brand=options.ShowIcon||dashboard.Status.Length>0?46:8;
@@ -129,7 +129,9 @@ public sealed class TaskbarStrip : Form {
     float cell=(dashboard.Width-brand)/dashboard.Visible.Count;
     for(int i=0;i<dashboard.Visible.Count;i++){var v=dashboard.Visible[i];float x=brand+i*cell;MiniGauge(g,x+28,25,1,v);
      if(options.ShowAmounts||!v.Remaining.HasValue)DrawCell(g,v.Remaining.HasValue?v.Remaining.Value.ToString("0.#")+"%":"--",new RectangleF(x,26,56,17),small,false,true);
-     DrawCell(g,ValueLabel(v),new RectangleF(x+60,1,cell-65,20),Font,false);DrawCell(g,TimeLabel(v),new RectangleF(x+60,23,cell-65,19),dateFont,false);
+     string upper=(options.ShowLabels&&dashboard.Visible.Count>1?v.Label+"  ":"")+(options.ShowCountdown?v.Countdown+ (v.Reported&&v.Countdown!="Reset passed"&&v.Countdown!="Reset unknown"?" until reset":""):"");
+     DrawCell(g,upper,new RectangleF(x+60,1,cell-65,20),small,false);
+     DrawCell(g,options.ShowReset?v.ResetText:"",new RectangleF(x+60,23,cell-65,19),dateFont,false);
     }
    }
    using(var badge=new Font("Segoe UI",9*scale,FontStyle.Regular,GraphicsUnit.Pixel))DrawCell(g,dashboard.Status=="refreshing"?"WAIT":dashboard.Status.ToUpperInvariant(),new RectangleF(1,31,43,13),badge,false,true);

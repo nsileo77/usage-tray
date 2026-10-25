@@ -10,7 +10,7 @@ using System.Windows.Forms;
 // Layout is independent of plan. Only reported codex windows supply values.
 public sealed class DisplayOptions {
  public string LogoPath="";
- public bool ShowIcon=true,ShowLabels=true,ShowAmounts=true,ShowReset=true,ShowPace=true,ShowLines=true,ShowFive=true,ShowWeek=true,ShowCountdown=false;
+ public bool ShowIcon=true,ShowLabels=true,ShowAmounts=true,ShowReset=true,ShowPace=true,ShowLines=true,ShowFive=true,ShowWeek=true,ShowCountdown=true;
  public bool AnyData {get{return ShowLabels||ShowAmounts||ShowReset||ShowPace||ShowLines||ShowCountdown;}}
  [ScriptIgnore] public string Signature {get{return LogoPath+"|"+ShowIcon+"|"+ShowLabels+"|"+ShowAmounts+"|"+ShowReset+"|"+ShowPace+"|"+ShowLines+"|"+ShowFive+"|"+ShowWeek+"|"+ShowCountdown;}}
  public static DisplayOptions Minimal(){return new DisplayOptions{ShowIcon=false,ShowLabels=true,ShowAmounts=true,ShowReset=false,ShowPace=false,ShowLines=false};}
@@ -43,7 +43,9 @@ public sealed class WindowView {
  public static string ResetAt(DateTime? reset,TimeZoneInfo zone,bool full){
   if(!reset.HasValue)return "Reset unavailable";
   var local=TimeZoneInfo.ConvertTime(new DateTimeOffset(reset.Value.ToUniversalTime()),zone);
-  return local.ToString(full?"dddd, MMMM d, yyyy 'at' h:mm tt '(' 'UTC'zzz ')'":"ddd, MMM d yyyy h:mm tt 'UTC'zzz",System.Globalization.CultureInfo.InvariantCulture)+(full?" ["+zone.Id+"]":"");
+  string date=local.ToString("dddd, MMMM d, yyyy 'at' h:mm tt",System.Globalization.CultureInfo.InvariantCulture);
+  string zoneName=zone.IsDaylightSavingTime(local.DateTime)?zone.DaylightName:zone.StandardName;
+  return full?date+" ("+zoneName+"; UTC"+local.ToString("zzz",System.Globalization.CultureInfo.InvariantCulture)+")":local.ToString("ddd, MMM d \u00b7 h:mm tt",System.Globalization.CultureInfo.InvariantCulture);
  }
  public static double? PaceAt(DateTime? reset,double? minutes,DateTime now){
   if(!reset.HasValue||!minutes.HasValue||minutes<=0||double.IsNaN(minutes.Value)||double.IsInfinity(minutes.Value))return null;
@@ -64,7 +66,7 @@ public sealed class WindowView {
 }
 public sealed class UsageLayout {
  public WindowView Week,Five,Selected;public string Layout,Status;public DisplayOptions Options;public bool NoViews;public List<WindowView> Visible=new List<WindowView>();
- public int Width {get{if(NoViews)return 330;if(!Options.ShowReset)return Visible.Count>1?(Layout=="double"?330:440):330;return Visible.Count>1?(Layout=="double"?560:700):440;}}
+ public int Width {get{if(NoViews)return 330;if(!Options.ShowReset)return Visible.Count>1?(Layout=="double"?330:440):330;return Visible.Count>1?(Layout=="double"?560:760):(Layout=="double"?500:440);}}
  public static string NormalizeLayout(string s){return s=="double"?"double":"single";}
  public static string NormalizeWindow(string s){return s=="weekly"||s=="5-hour"?s:"auto";}
  public static UsageLayout Create(List<Quota> rows,string layout,string window,DateTime now,string status,DisplayOptions options=null){
@@ -99,6 +101,11 @@ public static class LayoutReview {
   string early=WindowView.ResetAt(new DateTime(2026,11,1,5,30,0,DateTimeKind.Utc),zone,true),late=WindowView.ResetAt(new DateTime(2026,11,1,6,30,0,DateTimeKind.Utc),zone,true);
   Check(early.Contains("Sunday, November 1, 2026")&&early.Contains("1:30 AM")&&early.Contains("UTC-04:00")&&late.Contains("1:30 AM")&&late.Contains("UTC-05:00"),"DST repeated hour preserves date and offset");
   Check(WindowView.ResetAt(new DateTime(2026,3,8,7,0,0,DateTimeKind.Utc),zone,true).Contains("3:00 AM")&&WindowView.ResetAt(new DateTime(2026,3,8,6,59,0,DateTimeKind.Utc),zone,true).Contains("1:59 AM"),"DST spring transition");
+  string readable=WindowView.ResetAt(new DateTime(2027,1,1,2,15,0,DateTimeKind.Utc),zone,false);
+  Check(readable=="Thu, Dec 31 \u00b7 9:15 PM"&&!readable.Contains("UTC"),"readable local date with year rollover, no raw UTC in meter");
+  Check(WindowView.ResetAt(new DateTime(2026,3,8,7,0,0,DateTimeKind.Utc),zone,false).Contains("3:00 AM"),"meter spring DST conversion");
+  Check(new DisplayOptions().ShowCountdown,"balanced default includes reset countdown");
+  Check(WindowView.ResetAt(new DateTime(2026,11,1,9,57,0,DateTimeKind.Utc),zone,false)=="Sun, Nov 1 \u00b7 4:57 AM","original abbreviated reset format");
   var hidden=new DisplayOptions{ShowFive=false,ShowWeek=false,ShowIcon=false};var hiddenView=UsageLayout.Create(both,"single","auto",Now,"ERROR",hidden);Check(hiddenView.NoViews&&hiddenView.Status=="ERROR","zero sections retains mandatory error");
   var quiet=new DisplayOptions{ShowIcon=false,ShowLabels=false,ShowAmounts=false,ShowReset=false,ShowCountdown=false,ShowPace=false,ShowLines=false};Check(UsageLayout.Create(both,"single","auto",Now,"STALE",quiet).NoViews,"all optional content off has minimum UI");
   using(var strip=new TaskbarStrip(()=>{},()=>{},()=>{})){
@@ -125,18 +132,18 @@ public static class LayoutReview {
  }
  public static void Preview(string directory){
   Directory.CreateDirectory(directory);Application.EnableVisualStyles();
-  using(var sheet=new Bitmap(780,840))using(var g=Graphics.FromImage(sheet))using(var heading=new Font("Segoe UI",23,FontStyle.Bold))using(var label=new Font("Segoe UI",15,FontStyle.Bold))using(var small=new Font("Segoe UI",11)){
+  using(var sheet=new Bitmap(840,840))using(var g=Graphics.FromImage(sheet))using(var heading=new Font("Segoe UI",23,FontStyle.Bold))using(var label=new Font("Segoe UI",15,FontStyle.Bold))using(var small=new Font("Segoe UI",11)){
    g.Clear(Color.FromArgb(16,25,22));g.DrawString("Usage Tray · choose your view",heading,Brushes.White,26,20);g.DrawString("DEMO / synthetic examples. Plan names do not determine available windows.",small,Brushes.LightGray,26,64);
    using(var strip=new TaskbarStrip(()=>{},()=>{},()=>{}))for(int i=0;i<4;i++){
     bool plus=i>=2;string mode=i%2==0?"single":"double";string title=(plus?"Plus":"Pro")+" · "+(mode=="single"?(plus?"5-hour left / weekly right":"single weekly dial"):"compact");int x=26,y=112+i*174;
-    using(var panel=new SolidBrush(Color.FromArgb(26,40,33)))g.FillRectangle(panel,x,y,728,147);
+    using(var panel=new SolidBrush(Color.FromArgb(26,40,33)))g.FillRectangle(panel,x,y,788,147);
     g.DrawString(title,label,Brushes.White,x+18,y+14);g.DrawString(plus?"Example: weekly + five-hour reported":"Example: reported weekly window",small,Brushes.LightGray,x+18,y+43);
     strip.ApplyDpi(96);strip.SetWindows(Example(plus),mode,"auto",Now,"DEMO");using(var layer=strip.RenderLayer()){g.DrawImageUnscaled(layer,x+18,y+81);layer.Save(Path.Combine(directory,(plus?"plus":"pro")+"-"+mode+".png"),ImageFormat.Png);}
     if(mode=="single"){foreach(string window in new[]{"5-hour","weekly"}){strip.SetWindows(Example(plus),mode,window,Now,"DEMO");using(var layer=strip.RenderLayer())layer.Save(Path.Combine(directory,(plus?"plus":"pro")+"-single-"+(window=="5-hour"?"five":"weekly")+".png"),ImageFormat.Png);}}
    }
    sheet.Save(Path.Combine(directory,"layout-comparison.png"),ImageFormat.Png);
   }
-  using(var sheet=new Bitmap(1440,850))using(var g=Graphics.FromImage(sheet))using(var font=new Font("Segoe UI",12))using(var strip=new TaskbarStrip(()=>{},()=>{},()=>{})){
+  using(var sheet=new Bitmap(1560,850))using(var g=Graphics.FromImage(sheet))using(var font=new Font("Segoe UI",12))using(var strip=new TaskbarStrip(()=>{},()=>{},()=>{})){
    g.Clear(Color.FromArgb(16,25,22));g.DrawString("Synthetic DPI review — standard and compact",font,Brushes.White,18,14);int y=48;
    foreach(int dpi in new[]{96,120,144,192}){g.DrawString((dpi*100/96)+"% scaling",font,Brushes.LightGray,18,y);y+=25;strip.ApplyDpi(dpi);foreach(string mode in new[]{"single","double"}){strip.SetWindows(Example(true),mode,"auto",Now,"DEMO");using(var image=strip.RenderLayer()){g.DrawImageUnscaled(image,18,y);y+=image.Height+12;}}y+=15;}
    sheet.Save(Path.Combine(directory,"layout-dpi.png"),ImageFormat.Png);
