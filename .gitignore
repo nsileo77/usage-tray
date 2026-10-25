@@ -1,0 +1,7 @@
+*.exe
+*.pdb
+*.zip
+*-tests.txt
+test-result.txt
+usage-layout-test-*/
+settings.json
